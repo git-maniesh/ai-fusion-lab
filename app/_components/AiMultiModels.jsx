@@ -9,38 +9,50 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Lock, MessageSquare } from "lucide-react";
+import { Loader, Loader2, Lock, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SelectGroup, SelectLabel } from "@radix-ui/react-select";
 import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/config/FirebaseConfig";
 import { useUser } from "@clerk/nextjs";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const AiMultiModels = () => {
   const [aiModelList, setAiModelList] = useState(AiModelList);
-  const {aiSelectedModels, setAiSelectedModels} = useContext(AiSelectedModelContext)
+  const { messages, setMessages, aiSelectedModels, setAiSelectedModels } =
+    useContext(AiSelectedModelContext);
+
   const onToggleChange = (model, value) => {
     setAiModelList((prev) =>
       prev.map((m) => (m.model === model ? { ...m, enable: value } : m))
     );
+    setAiSelectedModels((prev) => ({
+      ...prev,
+      [model]: {
+        ...(prev?.[model] ?? {}),
+        enable: value,
+      },
+    }));
+  };
+  // console.log(aiSelectedModels);
+
+  const { user } = useUser();
+  const onSelectedValue = async (parentModel, value) => {
+    setAiSelectedModels((prev) => ({
+      ...prev,
+      [parentModel]: {
+        modelId: value,
+      },
+    }));
+    // //update to firebase db1
+    // const docRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress);
+    // await updateDoc(docRef, {
+    //   selectedModelPref: aiSelectedModels,
+    // });
   };
 
-const {user} = useUser()
-  const onSelectedValue = async(parentModel,value)=>{
-    setAiSelectedModels(prev=>({
-      ...prev,
-      [parentModel]:{
-        modelId:value
-      }
-    }))
-    //update to firebase db1
-    const docRef = doc(db,"users",user?.primaryEmailAddress?.emailAddress)
-    await updateDoc(docRef,{
-      selectedModelPref:aiSelectedModels
-    })
-  }
- 
   return (
     <div className="flex flex-1 h-[75vh] border-b">
       {aiModelList.map((model, index) => (
@@ -61,31 +73,45 @@ const {user} = useUser()
                 width={24}
                 height={24}
               />
-               {/* console.log(aiSelectedModels[model.model]) */}
+              {/* console.log(aiSelectedModels[model.model]) */}
               {model.enable && (
-                <Select defaultValue={aiSelectedModels[model.model].modelId} 
-                onValueChange={(value)=>onSelectedValue(model.model,value)}
-                disabled={model.premium}
+                <Select
+                  defaultValue={aiSelectedModels[model.model].modelId}
+                  onValueChange={(value) => onSelectedValue(model.model, value)}
+                  disabled={model.premium}
                 >
                   <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder={aiSelectedModels[model.model].modelId} />
+                    <SelectValue
+                      placeholder={aiSelectedModels[model.model].modelId}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup className="px-3">
                       <SelectLabel>Free</SelectLabel>
-                    {model.subModel.map((subModel, index) => subModel.premium == false && (
-                      <SelectItem key={index} value={subModel.id}>
-                        {subModel.name}
-                      </SelectItem>
-                    ))}
+                      {model.subModel.map(
+                        (subModel, index) =>
+                          subModel.premium == false && (
+                            <SelectItem key={index} value={subModel.id}>
+                              {subModel.name}
+                            </SelectItem>
+                          )
+                      )}
                     </SelectGroup>
                     <SelectGroup className="px-3">
                       <SelectLabel>Premium</SelectLabel>
-                    {model.subModel.map((subModel, index) => subModel.premium == true && (
-                      <SelectItem key={index} value={subModel.name} disabled={subModel.premium}>
-                        {subModel.name} {subModel.premium && <Lock className="h-4 w-4"/>}
-                      </SelectItem>
-                    ))}
+                      {model.subModel.map(
+                        (subModel, index) =>
+                          subModel.premium == true && (
+                            <SelectItem
+                              key={index}
+                              value={subModel.name}
+                              disabled={subModel.premium}
+                            >
+                              {subModel.name}{" "}
+                              {subModel.premium && <Lock className="h-4 w-4" />}
+                            </SelectItem>
+                          )
+                      )}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -110,6 +136,40 @@ const {user} = useUser()
                 <Lock />
                 Upgrade to unlock
               </Button>
+            </div>
+          )}
+          {model.enable && (
+            <div className="flex-1 p-4">
+              <div className="flex-1 p-4 space-y-2">
+                {messages[model.model]?.map((m, i) => (
+                  <div
+                    className={`p-2 rounded-md ${
+                      m.role == "user"
+                        ? "bg-blue-100 text-blue-900"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
+                  >
+                    {m.role == "assistant" && (
+                      <span className="text-sm text-gray-500">
+                        {m.model ?? model.model}
+                      </span>
+                    )}
+                    <div className="flex gap-3 items-center">
+                      {m.content == "loading" && (
+                        <div className="">
+                          <Loader2 size={5} className="animate-spin" />
+                          <span>Thinking...</span>
+                        </div>
+                      )}
+                    </div>
+                    {m.content !== "loading" && (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {m.content}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
