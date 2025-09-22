@@ -1,6 +1,6 @@
 import AiModelList from "@/shared/AiModelList";
 import Image from "next/image";
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -11,14 +11,36 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Lock, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SelectGroup, SelectLabel } from "@radix-ui/react-select";
+import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/config/FirebaseConfig";
+import { useUser } from "@clerk/nextjs";
 
 const AiMultiModels = () => {
   const [aiModelList, setAiModelList] = useState(AiModelList);
+  const {aiSelectedModels, setAiSelectedModels} = useContext(AiSelectedModelContext)
   const onToggleChange = (model, value) => {
     setAiModelList((prev) =>
       prev.map((m) => (m.model === model ? { ...m, enable: value } : m))
     );
   };
+
+const {user} = useUser()
+  const onSelectedValue = async(parentModel,value)=>{
+    setAiSelectedModels(prev=>({
+      ...prev,
+      [parentModel]:{
+        modelId:value
+      }
+    }))
+    //update to firebase db1
+    const docRef = doc(db,"users",user?.primaryEmailAddress?.emailAddress)
+    await updateDoc(docRef,{
+      selectedModelPref:aiSelectedModels
+    })
+  }
+ 
   return (
     <div className="flex flex-1 h-[75vh] border-b">
       {aiModelList.map((model, index) => (
@@ -39,17 +61,32 @@ const AiMultiModels = () => {
                 width={24}
                 height={24}
               />
+               {/* console.log(aiSelectedModels[model.model]) */}
               {model.enable && (
-                <Select>
+                <Select defaultValue={aiSelectedModels[model.model].modelId} 
+                onValueChange={(value)=>onSelectedValue(model.model,value)}
+                disabled={model.premium}
+                >
                   <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder={model.subModel[0].name} />
+                    <SelectValue placeholder={aiSelectedModels[model.model].modelId} />
                   </SelectTrigger>
                   <SelectContent>
-                    {model.subModel.map((subModel, index) => (
-                      <SelectItem key={index} value={subModel.name}>
+                    <SelectGroup className="px-3">
+                      <SelectLabel>Free</SelectLabel>
+                    {model.subModel.map((subModel, index) => subModel.premium == false && (
+                      <SelectItem key={index} value={subModel.id}>
                         {subModel.name}
                       </SelectItem>
                     ))}
+                    </SelectGroup>
+                    <SelectGroup className="px-3">
+                      <SelectLabel>Premium</SelectLabel>
+                    {model.subModel.map((subModel, index) => subModel.premium == true && (
+                      <SelectItem key={index} value={subModel.name} disabled={subModel.premium}>
+                        {subModel.name} {subModel.premium && <Lock className="h-4 w-4"/>}
+                      </SelectItem>
+                    ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               )}

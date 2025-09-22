@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./_components/AppSidebar";
@@ -8,9 +8,14 @@ import AppHeader from "./_components/AppHeader";
 import { useUser } from "@clerk/nextjs";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/config/FirebaseConfig";
+import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
+import { DefaultModel } from "@/shared/AiModelsShared";
+import { UserDetailContext } from "@/shared/context/UserDetailContext";
 
 function Provider({ children, ...props }) {
   const { user } = useUser();
+  const [aiSelectedModels, setAiSelectedModels] = useState(DefaultModel);
+  const [userDetail, setUserDetail] = useState();
   useEffect(() => {
     console.log("🔥 Firestore db object:", db); // ✅ log db to check if it's initialized
 
@@ -44,7 +49,7 @@ function Provider({ children, ...props }) {
   //   // if not then insert
   // };
   // should remove the createnewuser function
-  // files with user authentication 
+  // files with user authentication
   // layout , appsidebar and providera
 
   const CreateNewUser = async () => {
@@ -60,11 +65,14 @@ function Provider({ children, ...props }) {
 
       // Use Clerk user.id as document ID (safe, unique, no illegal chars)
       // const userRef = doc(db, "users", user.id);
-      const userRef = doc(db,"users",user?.primaryEmailAddress?.emailAddress)
+      const userRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
         console.log("✅ Existing user found:", userSnap.data());
+        const userInfo = userSnap.data();
+        setAiSelectedModels(userInfo?.selectedModelPref);
+        setUserDetail(userInfo)
         return;
       }
 
@@ -85,6 +93,7 @@ function Provider({ children, ...props }) {
 
       await setDoc(userRef, userData);
       console.log("✅ New user saved:", userData);
+      setUserDetail(userData)
     } catch (error) {
       console.error("🔥 Firestore error:", error);
     }
@@ -98,14 +107,20 @@ function Provider({ children, ...props }) {
       enableSystem
       disableTransitionOnChange
     >
-      <SidebarProvider>
-        <AppSidebar />
+      <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
+        <AiSelectedModelContext.Provider
+          value={{ aiSelectedModels, setAiSelectedModels }}
+        >
+          <SidebarProvider>
+            <AppSidebar />
 
-        <div className="w-full">
-          <AppHeader />
-          {children}
-        </div>
-      </SidebarProvider>
+            <div className="w-full">
+              <AppHeader />
+              {children}
+            </div>
+          </SidebarProvider>
+        </AiSelectedModelContext.Provider>
+      </UserDetailContext.Provider>
     </NextThemesProvider>
   );
 }
