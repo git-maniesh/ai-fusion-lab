@@ -9,7 +9,6 @@ export async function POST(req) {
     {
       message: msg, // Messages to AI
       aiModel: model, // Selected AI model
-
       outputType: "text", // 'text' or 'json'
     },
     {

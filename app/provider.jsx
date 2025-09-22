@@ -6,7 +6,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./_components/AppSidebar";
 import AppHeader from "./_components/AppHeader";
 import { useUser } from "@clerk/nextjs";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/config/FirebaseConfig";
 import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
 import { DefaultModel } from "@/shared/AiModelsShared";
@@ -16,6 +16,8 @@ function Provider({ children, ...props }) {
   const { user } = useUser();
   const [aiSelectedModels, setAiSelectedModels] = useState(DefaultModel);
   const [userDetail, setUserDetail] = useState();
+  const [messages, setMessages] = useState({});
+
   useEffect(() => {
     console.log("🔥 Firestore db object:", db); // ✅ log db to check if it's initialized
 
@@ -25,6 +27,20 @@ function Provider({ children, ...props }) {
       CreateNewUser();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (aiSelectedModels) {
+      //update to firebase db1
+      updateAIModelSelection();
+    }
+  }, [aiSelectedModels]);
+  const updateAIModelSelection = async () => {
+    //update to firebase db1
+    const docRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress);
+    await updateDoc(docRef, {
+      selectedModelPref: aiSelectedModels,
+    });
+  };
   // const CreateNewUser = async () => {
   //   // if user exists?
   //   const userRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress);
@@ -71,8 +87,8 @@ function Provider({ children, ...props }) {
       if (userSnap.exists()) {
         console.log("✅ Existing user found:", userSnap.data());
         const userInfo = userSnap.data();
-        setAiSelectedModels(userInfo?.selectedModelPref);
-        setUserDetail(userInfo)
+        setAiSelectedModels(userInfo?.selectedModelPref ?? DefaultModel);
+        setUserDetail(userInfo);
         return;
       }
 
@@ -93,7 +109,7 @@ function Provider({ children, ...props }) {
 
       await setDoc(userRef, userData);
       console.log("✅ New user saved:", userData);
-      setUserDetail(userData)
+      setUserDetail(userData);
     } catch (error) {
       console.error("🔥 Firestore error:", error);
     }
@@ -109,7 +125,12 @@ function Provider({ children, ...props }) {
     >
       <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
         <AiSelectedModelContext.Provider
-          value={{ aiSelectedModels, setAiSelectedModels }}
+          value={{
+            aiSelectedModels,
+            setAiSelectedModels,
+            messages,
+            setMessages,
+          }}
         >
           <SidebarProvider>
             <AppSidebar />
