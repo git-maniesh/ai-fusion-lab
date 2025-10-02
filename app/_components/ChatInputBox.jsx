@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Mic, Paperclip, Send } from "lucide-react";
 import React, { useContext, useEffect, useState } from "react";
