@@ -1,3 +1,5 @@
+"use client";
+
 import AiModelList from "@/shared/AiModelList";
 import Image from "next/image";
 import React, { useContext, useState } from "react";
