@@ -11,6 +11,5 @@ export const DefaultModel = {
   "Mistral": { "modelId": "mistral-medium-2505",enable:false  },
   "Grok": { "modelId": "grok-3-mini",enable:false  },
  "Cohere" :{"modelId":"cohere-command-a",enable:false },
-
    "Llama" :{"modelId":"Llama-3.3-70B-Instruct",enable:false },
 };

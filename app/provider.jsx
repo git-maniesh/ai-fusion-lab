@@ -17,12 +17,13 @@ function Provider({ children, ...props }) {
   const [aiSelectedModels, setAiSelectedModels] = useState(DefaultModel);
   const [userDetail, setUserDetail] = useState();
   const [messages, setMessages] = useState({});
+  // const {user} = useUser()
 
   useEffect(() => {
-    console.log("🔥 Firestore db object:", db); // ✅ log db to check if it's initialized
+    // console.log("🔥 Firestore db object:", db); // ✅ log db to check if it's initialized
 
     if (user) {
-      console.log("👤 Clerk user object:", user);
+      // console.log("👤 Clerk user object:", user);
 
       CreateNewUser();
     }
@@ -31,12 +32,12 @@ function Provider({ children, ...props }) {
   useEffect(() => {
     if (aiSelectedModels) {
       //update to firebase db1
-      updateAIModelSelection();
+      updateAIModelSelectionPref();
     }
   }, [aiSelectedModels]);
-  const updateAIModelSelection = async () => {
+  const updateAIModelSelectionPref = async () => {
     //update to firebase db1
-    const docRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress);
+    const docRef = doc(db, "users", user?.primaryEmailAddress?.emailAddress || user?.primaryEmailAddress?.[0]?.emailAddress || "");
     await updateDoc(docRef, {
       selectedModelPref: aiSelectedModels,
     });
@@ -85,7 +86,7 @@ function Provider({ children, ...props }) {
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
-        console.log("✅ Existing user found:", userSnap.data());
+        // console.log("✅ Existing user found:", userSnap.data());
         const userInfo = userSnap.data();
         setAiSelectedModels(userInfo?.selectedModelPref ?? DefaultModel);
         setUserDetail(userInfo);
