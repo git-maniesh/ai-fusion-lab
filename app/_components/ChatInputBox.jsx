@@ -4,25 +4,75 @@ import React, { useContext, useEffect, useState } from "react";
 import AiMultiModels from "./AiMultiModels";
 import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
 import axios from "axios";
+import { v4 as uuidv4 } from "uuid";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/config/FirebaseConfig";
+import { useAuth, useUser } from "@clerk/nextjs";
+import {useSearchParams} from "next/navigation"
+import {toast} from 'sonner'
+
 
 const ChatInputBox = () => {
-  const [userInput, setUserInput] = useState();
+  const [userInput, setUserInput] = useState("");
+  const {has} = useAuth()
+  // const paidUser = has({plan:'unlimited_plan'})
   const { messages, setMessages, aiSelectedModels, setAiSelectedModels } =
     useContext(AiSelectedModelContext);
+  const {user} = useUser()
+  
 
+
+  const [chatId, setChatId] = useState(() => uuidv4());
+    const params = useSearchParams()
+
+  useEffect(() => {
+    const chatId_ = params.get('chatId')
+    if(chatId_){
+      setChatId(chatId_)
+      GetMessages(chatId_)
+    }else{
+      setMessages([])
+      setChatId(uuidv4());
+    }
+    // setChatId(uuidv4());
+
+  }, [params]);
+  const GetMessages = async() =>{
+    // setMessages([])
+    const docRef = doc(db,"chatHistorY",chatId)
+    const docSnap = await getDoc(docRef)
+    const docData = docSnap.data()
+    setMessages(docData.messages)
+  }
   const handleSend = async () => {
     if (!userInput.trim()) return;
+    // Deduct and Check Token Limit 
+
+
+    if(!has({ plan: "unlimited_plan" })){
+    // call only if only the userr is on free trail
+    const result = await axios.post('/api/user-remaining-msg',{
+      token:1
+    })
+
+    const remainingToken= result?.data?.reaminingToken
+    if(remainingToken <= 0){
+      console.log('Limit Exceeded')
+      toast.error('Maximum Daily Limit Exceed')
+      return;
+    }}
 
     //add user message to all enabled models
     setMessages((prev) => {
       const updated = { ...prev };
       Object.keys(aiSelectedModels).forEach((modelKey) => {
-        // if(aiSelectedModels[modelKey].enable){
-        updated[modelKey] = [
-          ...(updated[modelKey] ?? []),
-          { role: "user", content: userInput },
-        ];
-        // }
+        if (aiSelectedModels[modelKey].enable) {
+          // if (modelInfo.enable) {
+          updated[modelKey] = [
+            ...(updated[modelKey] ?? []),
+            { role: "user", content: userInput },
+          ];
+        }
       });
       return updated;
     });
@@ -52,10 +102,12 @@ const ChatInputBox = () => {
             msg: [{ role: "user", content: currentInput }],
             parentModel,
           });
+          console.log(result);
           const { aiResponse, model } = result.data;
           setMessages((prev) => {
             const updated = [...(prev[parentModel] ?? [])];
             const loadingIndex = updated.findIndex((m) => m.loading);
+            console.log("ai Response");
 
             if (loadingIndex !== -1) {
               updated[loadingIndex] = {
@@ -89,8 +141,22 @@ const ChatInputBox = () => {
     );
   };
   useEffect(() => {
-    console.log(messages);
-  }, [messages]);
+    if (chatId && messages) {
+      SaveMessages();
+    }
+  }, [messages, chatId]);
+
+  const SaveMessages = async () => {
+    const docRef = doc(db, "chatHistorY", chatId);
+    await setDoc(docRef, {
+      chatId: chatId,
+      userEmail:user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress ||
+        "",
+      messages: messages,
+      lastUpdated: Date.now()
+    });
+  };
 
   return (
     <div className="relative min-h-screen">
@@ -102,7 +168,7 @@ const ChatInputBox = () => {
       <div className="fixed bottom-0  flex left-0 w-full justify-center px-4 pb-4">
         <div className="w-full border rounded-xl shadow-md max-w-2xl p-4">
           <input
-            type="textarea"
+            type="text"
             placeholder="Ask me anything"
             className="border-0 outline-none w-full"
             value={userInput}
@@ -114,15 +180,14 @@ const ChatInputBox = () => {
             </Button>
             <div className="flex gap-5">
               <Button variant={"ghost"} size={"icon"}>
-                <Mic />{" "}
+                <Mic />
               </Button>
               <Button
-                variant={""}
                 size={"icon"}
                 className={"bg-purple-600"}
                 onClick={handleSend}
               >
-                <Send />{" "}
+                <Send />
               </Button>
             </div>
           </div>
