@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 import AiModelList from "@/shared/AiModelList";
 import Image from "next/image";
@@ -19,13 +19,33 @@ import { useAuth, useUser } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+// safe markdown renderer (prevents crash on large inputs)
+const SafeMarkdown = ({ content }) => {
+  if (!content) return null;
+
+  let safeContent = content;
+  // optional: trim to avoid extreme size
+  if (safeContent.length > 10000) {
+    safeContent = safeContent.slice(0, 10000) + "\n\n...(truncated)";
+  }
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      skipHtml={true} // prevent raw HTML injection
+    >
+      {safeContent}
+    </ReactMarkdown>
+  );
+};
+
 const AiMultiModels = () => {
   const { user } = useUser();
-  const { has } = useAuth(); // Clerk auth function
-  const has1 = true; // Replace with real plan check if needed
+  const { has } = useAuth(); // Clerk
+  const has1 = true; // TODO: replace with real plan check
 
   const [aiModelList, setAiModelList] = useState(AiModelList);
-  const { messages, setMessages, aiSelectedModels, setAiSelectedModels } =
+  const { messages, aiSelectedModels, setAiSelectedModels } =
     useContext(AiSelectedModelContext);
 
   const onToggleChange = (model, value) => {
@@ -60,12 +80,11 @@ const AiMultiModels = () => {
             model.enable ? "flex-1 min-w-[400px]" : "min-w-[100px] flex-none"
           }`}
         >
-          {/* Model Header */}
+          {/* Header */}
           <div className="flex w-full h-[70px] items-center justify-between border-b p-4">
             <div className="flex items-center gap-4">
               <Image src={model.icon} alt={model.model} width={24} height={24} />
 
-              {/* Model Dropdown */}
               {model.enable && (
                 <Select
                   defaultValue={aiSelectedModels[model.model]?.modelId}
@@ -74,7 +93,9 @@ const AiMultiModels = () => {
                 >
                   <SelectTrigger className="w-[180px]">
                     <SelectValue
-                      placeholder={aiSelectedModels[model.model]?.modelId || "Select model"}
+                      placeholder={
+                        aiSelectedModels[model.model]?.modelId || "Select model"
+                      }
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -93,8 +114,12 @@ const AiMultiModels = () => {
                       {model.subModel
                         .filter((sub) => sub.premium)
                         .map((sub, idx) => (
-                          <SelectItem key={idx} value={sub.name} disabled={!has1}>
-                            {sub.name} <Lock className="h-4 w-4" />
+                          <SelectItem
+                            key={idx}
+                            value={sub.id} // FIX: use id not name
+                            disabled={!has1}
+                          >
+                            {sub.name} {<Lock className="h-4 w-4" />}
                           </SelectItem>
                         ))}
                     </SelectGroup>
@@ -103,7 +128,6 @@ const AiMultiModels = () => {
               )}
             </div>
 
-            {/* Toggle / Message Icon */}
             <div>
               {model.enable ? (
                 <Switch
@@ -112,12 +136,14 @@ const AiMultiModels = () => {
                   onCheckedChange={(v) => onToggleChange(model.model, v)}
                 />
               ) : (
-                <MessageSquare onClick={() => onToggleChange(model.model, true)} />
+                <MessageSquare
+                  onClick={() => onToggleChange(model.model, true)}
+                />
               )}
             </div>
           </div>
 
-          {/* Upgrade Notice */}
+          {/* Upgrade notice */}
           {model.premium && !has1 && model.enable && (
             <div className="flex items-center justify-center h-full">
               <Button>
@@ -141,18 +167,18 @@ const AiMultiModels = () => {
                     }`}
                   >
                     {m.role === "assistant" && (
-                      <span className="text-sm text-gray-500">{m.model || model.model}</span>
+                      <span className="text-sm text-gray-500">
+                        {m.model || model.model}
+                      </span>
                     )}
-                    <div className="flex gap-3 items-center">
-                      {m.content === "loading" && (
-                        <div>
-                          <Loader2 size={5} className="animate-spin" />
-                          <span>Thinking...</span>
-                        </div>
-                      )}
-                    </div>
-                    {m?.content && m.content !== "loading" && (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+
+                    {m.content === "loading" ? (
+                      <div className="flex gap-2 items-center">
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Thinking...</span>
+                      </div>
+                    ) : (
+                      <SafeMarkdown content={m.content} />
                     )}
                   </div>
                 ))}
