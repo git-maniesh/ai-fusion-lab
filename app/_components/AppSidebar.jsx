@@ -12,10 +12,18 @@ import { SignInButton, useAuth, useUser } from "@clerk/nextjs";
 import { Moon, Sun, User2, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import UsageCreditProgress from "./UsageCreditProgress";
-import { collection, getDocs, query, where, getDoc, doc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  getDoc,
+  doc,
+} from "firebase/firestore";
 import { useEffect, useState, useContext } from "react";
 import moment from "moment";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { db } from "@/config/FirebaseConfig";
 import axios from "axios";
 import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
@@ -25,19 +33,27 @@ export function AppSidebar() {
   const { has } = useAuth();
   const { theme, setTheme } = useTheme();
   const { user } = useUser();
+  const router = useRouter();
+
   const [chatHistorY, setChatHistorY] = useState([]);
   const [freeMsgCount, setFreeMsgCount] = useState(0);
-  const { aiSelectedMedels, setAiSelectedModels, messages } =
+
+  // <-- IMPORTANT: include setMessages from context
+  const { aiSelectedModels, setAiSelectedModels, messages, setMessages } =
     useContext(AiSelectedModelContext);
 
   useEffect(() => {
     if (user) {
       GetChatHistory();
+    } else {
+      setChatHistorY([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
     GetRemainingTokenMsgs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   const GetChatHistory = async () => {
@@ -49,29 +65,21 @@ export function AppSidebar() {
       const querySnapshot = await getDocs(q);
 
       const chats = [];
-      querySnapshot.forEach((doc) => {
-        chats.push(doc.data());
-      });
-
+      querySnapshot.forEach((d) => chats.push(d.data()));
       setChatHistorY(chats);
     } catch (err) {
       console.error("Error fetching chat history:", err);
     }
   };
 
-  // ✅ Function to fetch full chat by chatId
+  // fetch a single chat document by chatId
   const GetSingleChat = async (chatId) => {
     try {
+      if (!chatId) return null;
       const docRef = doc(db, "chatHistorY", chatId);
       const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        console.log("Chat data:", docSnap.data());
-        return docSnap.data();
-      } else {
-        console.log("No such document!");
-        return null;
-      }
+      if (docSnap.exists()) return docSnap.data();
+      return null;
     } catch (err) {
       console.error("Error fetching single chat:", err);
       return null;
@@ -110,10 +118,47 @@ export function AppSidebar() {
       const result = await axios.post("/api/user-remaining-msg");
       setFreeMsgCount(result.data.remainingToken);
     } catch (err) {
-      console.error(
-        "Error fetching remaining tokens:",
-        err.response?.data || err
-      );
+      console.error("Error fetching remaining tokens:", err.response?.data || err);
+    }
+  };
+
+  // When clicking a chat: load doc, restore messages & model selections, update URL
+  const handleOpenChat = async (chatInfo) => {
+    const chatData = await GetSingleChat(chatInfo.chatId);
+    if (!chatData) return;
+
+    // 1) Restore messages (replace entire messages object for simplicity)
+    if (chatData.messages) {
+      setMessages(chatData.messages);
+    }
+
+    // 2) Restore aiSelectedModels state so models appear enabled and last-used modelId set
+    // build a new models object (merge with current)
+    setAiSelectedModels((prev) => {
+      const newModels = { ...(prev || {}) };
+
+      Object.entries(chatData.messages || {}).forEach(([modelKey, msgs]) => {
+        // find last assistant message and try to read a modelId (or fallback to model)
+        const lastAssistantMsg = msgs.filter((m) => m.role === "assistant").pop();
+        const restoredModelId =
+          lastAssistantMsg?.modelId ?? lastAssistantMsg?.model ?? newModels[modelKey]?.modelId ?? null;
+
+        newModels[modelKey] = {
+          ...(newModels[modelKey] ?? {}),
+          enable: true,
+          modelId: restoredModelId,
+        };
+      });
+
+      return newModels;
+    });
+
+    // 3) Update the URL so other components (that rely on searchParams) are in sync
+    try {
+      router.push("/?chatId=" + encodeURIComponent(chatInfo.chatId));
+    } catch (e) {
+      // router push may throw in some edge cases; ignore if so
+      console.warn("router.push failed", e);
     }
   };
 
@@ -123,13 +168,7 @@ export function AppSidebar() {
         <div className="p-2">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <img
-                src="/logo.svg"
-                alt="logo"
-                width={60}
-                height={60}
-                className="w-[40px] h-[40px]"
-              />
+              <img src="/logo.svg" alt="logo" width={60} height={60} className="w-[40px] h-[40px]" />
               <h2 className="font-bold text-2xl">AI Fusion</h2>
             </div>
             <div>
@@ -167,59 +206,22 @@ export function AppSidebar() {
         <SidebarGroup>
           <div className="p-3">
             <h2 className="font-bold text-lg">Chat</h2>
-            {!user && (
-              <p className="text-sm text-gray-400">
-                Sign in to start chatting with multiple AI models
-              </p>
-            )}
+            {!user && <p className="text-sm text-gray-400">Sign in to start chatting with multiple AI models</p>}
 
-           {chatHistorY.map((chat, index) => {
-  const chatInfo = GetLastUserMessageFromChat(chat);
-  return (
-    <div
-      key={index}
-      onClick={async () => {
-        const chatData = await GetSingleChat(chatInfo.chatId);
-
-        if (chatData && chatData.messages) {
-          // Enable models & restore their last used subModel
-          setAiSelectedModels((prev) => {
-            const newModels = { ...prev };
-
-            Object.entries(chatData.messages).forEach(([modelKey, msgs]) => {
-              // Find the last assistant message to get modelId (if saved)
-              const lastAssistantMsg = msgs.filter((m) => m.role === "assistant").pop();
-              const restoredModelId = lastAssistantMsg?.modelId || prev?.[modelKey]?.modelId;
-
-              newModels[modelKey] = {
-                ...(newModels[modelKey] ?? {}),
-                enable: true,
-                modelId: restoredModelId || null,
-              };
-            });
-
-            return newModels;
-          });
-
-          // Restore messages for each model
-          Object.entries(chatData.messages).forEach(([modelKey, msgs]) => {
-            setMessages((prev) => ({
-              ...prev,
-              [modelKey]: msgs,
-            }));
-          });
-        }
-      }}
-      className="mt-2 cursor-pointer hover:bg-gray-200 p-3"
-    >
-      <h2 className="text-sm text-gray-400">{chatInfo.lastMsgDate}</h2>
-      <h2 className="text-lg line-clamp-1">{chatInfo.message}</h2>
-      <hr className="my-3" />
-    </div>
-  );
-})}
-
-
+            {chatHistorY.map((chat, index) => {
+              const chatInfo = GetLastUserMessageFromChat(chat);
+              return (
+                <div
+                  key={index}
+                  onClick={() => handleOpenChat(chatInfo)}
+                  className="mt-2 cursor-pointer hover:bg-gray-200 p-3"
+                >
+                  <h2 className="text-sm text-gray-400">{chatInfo.lastMsgDate}</h2>
+                  <h2 className="text-lg line-clamp-1">{chatInfo.message}</h2>
+                  <hr className="my-3" />
+                </div>
+              );
+            })}
           </div>
         </SidebarGroup>
       </SidebarContent>
