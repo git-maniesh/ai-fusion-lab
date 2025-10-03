@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@/components/ui/button";
 import { Mic, Paperclip, Send } from "lucide-react";
 import React, { useContext, useEffect, useState } from "react";
@@ -7,170 +5,192 @@ import AiMultiModels from "./AiMultiModels";
 import { AiSelectedModelContext } from "@/shared/context/AiSelectedModelContext";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/config/FirebaseConfig";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import {useSearchParams} from "next/navigation"
+import {toast} from 'sonner'
+
 
 const ChatInputBox = () => {
   const [userInput, setUserInput] = useState("");
-  const { has } = useAuth();
-  const { user } = useUser();
-  const params = useSearchParams();
-
-  const { messages, setMessages, aiSelectedModels } =
+  const {has} = useAuth()
+  // const paidUser = has({plan:'unlimited_plan'})
+  const { messages, setMessages, aiSelectedModels, setAiSelectedModels } =
     useContext(AiSelectedModelContext);
+  const {user} = useUser()
+  
+
 
   const [chatId, setChatId] = useState(() => uuidv4());
+    const params = useSearchParams()
 
-  // Load chat messages based on URL chatId
   useEffect(() => {
-    const chatIdFromParams = params.get("chatId");
-    if (chatIdFromParams) {
-      setChatId(chatIdFromParams);
-      fetchMessages(chatIdFromParams);
-    } else {
-      setMessages({});
+    const chatId_ = params.get('chatId')
+    if(chatId_){
+      setChatId(chatId_)
+      GetMessages(chatId_)
+    }else{
+      setMessages([])
       setChatId(uuidv4());
     }
+    // setChatId(uuidv4());
+
   }, [params]);
-
-  const fetchMessages = async (id) => {
-    try {
-      const docRef = doc(db, "chatHistorY", id);
-      const docSnap = await getDoc(docRef);
-      const docData = docSnap.data();
-      if (docData?.messages) setMessages(docData.messages);
-    } catch (err) {
-      console.error("Error fetching messages:", err);
-    }
-  };
-
+  const GetMessages = async() =>{
+    // setMessages([])
+    const docRef = doc(db,"chatHistorY",chatId)
+    const docSnap = await getDoc(docRef)
+    const docData = docSnap.data()
+    setMessages(docData.messages)
+  }
   const handleSend = async () => {
     if (!userInput.trim()) return;
+    // Deduct and Check Token Limit 
 
-    // Token limit check for free users
-    if (!has({ plan: "unlimited_plan" })) {
-      try {
-        const res = await axios.post("/api/user-remaining-msg", { token: 1 });
-        if (res.data.remainingToken <= 0) {
-          toast.error("Maximum Daily Limit Exceeded");
-          return;
-        }
-      } catch (err) {
-        console.error("Token check failed:", err);
-      }
-    }
 
-    const inputMessage = userInput;
-    setUserInput("");
+    if(!has({ plan: "unlimited_plan" })){
+    // call only if only the userr is on free trail
+    const result = await axios.post('/api/user-remaining-msg',{
+      token:1
+    })
 
-    // Add user message to all enabled models
+    const remainingToken= result?.data?.reaminingToken
+    if(remainingToken <= 0){
+      console.log('Limit Exceeded')
+      toast.error('Maximum Daily Limit Exceed')
+      return;
+    }}
+
+    //add user message to all enabled models
     setMessages((prev) => {
       const updated = { ...prev };
       Object.keys(aiSelectedModels).forEach((modelKey) => {
         if (aiSelectedModels[modelKey].enable) {
+          // if (modelInfo.enable) {
           updated[modelKey] = [
             ...(updated[modelKey] ?? []),
-            { role: "user", content: inputMessage },
+            { role: "user", content: userInput },
           ];
         }
       });
       return updated;
     });
+    const currentInput = userInput;
+    setUserInput("");
+    //Fetch response from each enabled model
+    Object.entries(aiSelectedModels).forEach(
+      async ([parentModel, modelInfo]) => {
+        if (!modelInfo.modelId || aiSelectedModels[parentModel].enable == false)
+          return;
 
-    // Send message to all enabled AI models
-    Object.entries(aiSelectedModels).forEach(async ([modelKey, modelInfo]) => {
-      if (!modelInfo.modelId || !modelInfo.enable) return;
+        setMessages((prev) => ({
+          ...prev,
+          [parentModel]: [
+            ...(prev[parentModel] ?? []),
+            {
+              role: "assistant",
+              content: "Thinking...",
+              model: parentModel,
+              loading: true,
+            },
+          ],
+        }));
+        try {
+          const result = await axios.post("/api/ai-multi-model", {
+            model: modelInfo.modelId,
+            msg: [{ role: "user", content: currentInput }],
+            parentModel,
+          });
+          console.log(result);
+          const { aiResponse, model } = result.data;
+          setMessages((prev) => {
+            const updated = [...(prev[parentModel] ?? [])];
+            const loadingIndex = updated.findIndex((m) => m.loading);
+            console.log("ai Response");
 
-      // Add "Thinking..." placeholder
-      setMessages((prev) => ({
-        ...prev,
-        [modelKey]: [
-          ...(prev[modelKey] ?? []),
-          { role: "assistant", content: "Thinking...", loading: true },
-        ],
-      }));
-
-      try {
-        const res = await axios.post("/api/ai-multi-model", {
-          model: modelInfo.modelId,
-          msg: [{ role: "user", content: inputMessage }],
-          parentModel: modelKey,
-        });
-
-        const aiResponse = res.data.aiResponse || "Error fetching response";
-
-        // Replace "Thinking..." with actual AI response
-        setMessages((prev) => {
-          const updated = [...(prev[modelKey] ?? [])];
-          const index = updated.findIndex((m) => m.loading);
-          if (index !== -1) {
-            updated[index] = { role: "assistant", content: aiResponse };
-          } else {
-            updated.push({ role: "assistant", content: aiResponse });
-          }
-          return { ...prev, [modelKey]: updated };
-        });
-      } catch (err) {
-        console.error(err);
-        setMessages((prev) => {
-          const updated = [...(prev[modelKey] ?? [])];
-          const index = updated.findIndex((m) => m.loading);
-          if (index !== -1) {
-            updated[index] = { role: "assistant", content: "Error fetching response" };
-          } else {
-            updated.push({ role: "assistant", content: "Error fetching response" });
-          }
-          return { ...prev, [modelKey]: updated };
-        });
+            if (loadingIndex !== -1) {
+              updated[loadingIndex] = {
+                role: "assistant",
+                content: aiResponse,
+                model,
+                loading: false,
+              };
+            } else {
+              // fallback if no loading msg found
+              updated.push({
+                role: "assistant",
+                content: aiResponse,
+                model,
+                loading: false,
+              });
+            }
+            return { ...prev, [parentModel]: updated };
+          });
+        } catch (error) {
+          console.log(error);
+          setMessages((prev) => ({
+            ...prev,
+            [parentModel]: [
+              ...(prev[parentModel] ?? []),
+              { role: "assistant", content: "Error Fetching Response" },
+            ],
+          }));
+        }
       }
+    );
+  };
+  useEffect(() => {
+    if (chatId && messages) {
+      SaveMessages();
+    }
+  }, [messages, chatId]);
+
+  const SaveMessages = async () => {
+    const docRef = doc(db, "chatHistorY", chatId);
+    await setDoc(docRef, {
+      chatId: chatId,
+      userEmail:user?.primaryEmailAddress?.emailAddress ||
+        user?.emailAddresses?.[0]?.emailAddress ||
+        "",
+      messages: messages,
+      lastUpdated: Date.now()
     });
   };
 
-  // Save messages to Firestore whenever messages or chatId changes
-  useEffect(() => {
-    if (!chatId || !messages) return;
-
-    const saveMessages = async () => {
-      try {
-        await setDoc(doc(db, "chatHistorY", chatId), {
-          chatId,
-          userEmail:
-            user?.primaryEmailAddress?.emailAddress ||
-            user?.emailAddresses?.[0]?.emailAddress ||
-            "",
-          messages,
-          lastUpdated: Date.now(),
-        });
-      } catch (err) {
-        console.error("Error saving messages:", err);
-      }
-    };
-    saveMessages();
-  }, [messages, chatId]);
-
   return (
     <div className="relative min-h-screen">
-      {/* Chat Messages */}
-      <div className="p-4">
+      {/* page content */}
+      <div>
         <AiMultiModels />
       </div>
-
-      {/* Input box */}
-      <div className="fixed bottom-0 flex left-0 w-full justify-center px-4 pb-4">
-        <div className="w-full border rounded-xl shadow-md max-w-2xl p-4 flex items-center gap-2">
+      {/* fixed chat input */}
+      <div className="fixed bottom-0  flex left-0 w-full justify-center px-4 pb-4">
+        <div className="w-full border rounded-xl shadow-md max-w-2xl p-4">
           <input
             type="text"
             placeholder="Ask me anything"
-            className="border-0 outline-none flex-1"
+            className="border-0 outline-none w-full"
             value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
+            onChange={(event) => setUserInput(event.target.value)}
           />
-          <Button size="icon" onClick={handleSend}>
-            <Send />
-          </Button>
+          <div className="mt-3 flex justify-between items-center">
+            <Button variant={"ghost"} size={"icon"}>
+              <Paperclip className="h-5 w-5" />
+            </Button>
+            <div className="flex gap-5">
+              <Button variant={"ghost"} size={"icon"}>
+                <Mic />
+              </Button>
+              <Button
+                size={"icon"}
+                className={"bg-purple-600"}
+                onClick={handleSend}
+              >
+                <Send />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
