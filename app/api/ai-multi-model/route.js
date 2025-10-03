@@ -1,27 +1,31 @@
 import axios from "axios";
-import { NextResponse } from "next/server";
 
-export async function POST(req) {
-  const { model, msg, parentModel } = await req.json();
-  /* Send POST request using Axios */
-  const response = await axios.post(
-    "https://kravixstudio.com/api/v1/chat",
-    {
-      message: msg, // Messages to AI
-      aiModel: model, // Selected AI model
-      outputType: "text", // 'text' or 'json'
-    },
-    {
-      headers: {
-        "Content-Type": "application/json", // Tell server we're sending JSON
-        Authorization: "Bearer "+ process.env.KRAVIX_STUDIO_API_KEY, // Replace with your API key
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).end();
+
+  const { model, msg, parentModel } = req.body;
+
+  try {
+    const response = await axios.post(
+      "https://kravixstudio.com/api/v1/chat",
+      {
+        message: msg,
+        aiModel: model,
+        outputType: "text",
       },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.KRAVIX_STUDIO_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  console.log(response.data); // Log API response
-  return NextResponse.json({
-    ...response.data,
-    model: parentModel,
-  });
+    const aiResponse = response.data.output || "No response from AI";
+
+    res.status(200).json({ aiResponse, model: parentModel });
+  } catch (err) {
+    console.error(err.response?.data || err);
+    res.status(500).json({ aiResponse: "Error Fetching Response", model: parentModel });
+  }
 }
