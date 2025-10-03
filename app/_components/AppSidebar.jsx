@@ -173,28 +173,53 @@ export function AppSidebar() {
               </p>
             )}
 
-            {chatHistorY.map((chat, index) => {
-              const chatInfo = GetLastUserMessageFromChat(chat);
-              return (
-                <div
-                  key={index}
-                  onClick={async () => {
-                    const chatData = await GetSingleChat(chatInfo.chatId);
-                    if (chatData) {
-                      console.log("Loaded chat:", chatData);
-                      // 👉 You could call setMessages(chatData.messages) here if needed
-                    }
-                  }}
-                  className="mt-2 cursor-pointer hover:bg-gray-200 p-3"
-                >
-                  <h2 className="text-sm text-gray-400">
-                    {chatInfo.lastMsgDate}
-                  </h2>
-                  <h2 className="text-lg line-clamp-1">{chatInfo.message}</h2>
-                  <hr className="my-3" />
-                </div>
-              );
-            })}
+           {chatHistorY.map((chat, index) => {
+  const chatInfo = GetLastUserMessageFromChat(chat);
+  return (
+    <div
+      key={index}
+      onClick={async () => {
+        const chatData = await GetSingleChat(chatInfo.chatId);
+
+        if (chatData && chatData.messages) {
+          // Enable models & restore their last used subModel
+          setAiSelectedModels((prev) => {
+            const newModels = { ...prev };
+
+            Object.entries(chatData.messages).forEach(([modelKey, msgs]) => {
+              // Find the last assistant message to get modelId (if saved)
+              const lastAssistantMsg = msgs.filter((m) => m.role === "assistant").pop();
+              const restoredModelId = lastAssistantMsg?.modelId || prev?.[modelKey]?.modelId;
+
+              newModels[modelKey] = {
+                ...(newModels[modelKey] ?? {}),
+                enable: true,
+                modelId: restoredModelId || null,
+              };
+            });
+
+            return newModels;
+          });
+
+          // Restore messages for each model
+          Object.entries(chatData.messages).forEach(([modelKey, msgs]) => {
+            setMessages((prev) => ({
+              ...prev,
+              [modelKey]: msgs,
+            }));
+          });
+        }
+      }}
+      className="mt-2 cursor-pointer hover:bg-gray-200 p-3"
+    >
+      <h2 className="text-sm text-gray-400">{chatInfo.lastMsgDate}</h2>
+      <h2 className="text-lg line-clamp-1">{chatInfo.message}</h2>
+      <hr className="my-3" />
+    </div>
+  );
+})}
+
+
           </div>
         </SidebarGroup>
       </SidebarContent>
