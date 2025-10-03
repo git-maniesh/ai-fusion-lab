@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-
 import {
   Sidebar,
   SidebarContent,
@@ -10,7 +9,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { SignInButton, useAuth, useUser } from "@clerk/nextjs";
-import { Bolt, Moon, Sun, User2, Zap } from "lucide-react";
+import { Moon, Sun, User2, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import UsageCreditProgress from "./UsageCreditProgress";
 import { collection, getDocs, query, where } from "firebase/firestore";
@@ -24,38 +23,60 @@ import PricingModal from "./PricingModal";
 
 export function AppSidebar() {
   const { has } = useAuth();
-  // const paidUser = has({ plan: "unlimited_plan" });
   const { theme, setTheme } = useTheme();
   const { user } = useUser();
   const [chatHistorY, setChatHistorY] = useState([]);
   const [freeMsgCount, setFreeMsgCount] = useState(0);
-  const { aiSelectedMedels, setAiSelectedModels, messages, setMessages } =
+  const { aiSelectedMedels, setAiSelectedModels, messages } =
     useContext(AiSelectedModelContext);
+
   useEffect(() => {
-    user && GetChatHistory();
-    // user && GetRemainingMsgs();
+    if (user) {
+      GetChatHistory();
+    }
   }, [user]);
+
   useEffect(() => {
     GetRemainingTokenMsgs();
   }, [messages]);
+
   const GetChatHistory = async () => {
-    const q = query(
-      collection(db, "chatHistorY"),
-      where("userEmail", "==", user?.primaryEmailAddress?.emailAddress)
-    );
-    const querySnapshot = await getDocs(q);
+    try {
+      const q = query(
+        collection(db, "chatHistorY"),
+        where("userEmail", "==", user?.primaryEmailAddress?.emailAddress)
+      );
+      const querySnapshot = await getDocs(q);
 
-    querySnapshot.forEach((doc) => {
-      // console.log(doc.id, doc.data());
-      setChatHistorY((prev) => [...prev, doc.data()]);
-    });
+      const chats = [];
+      querySnapshot.forEach((doc) => {
+        chats.push(doc.data());
+      });
+
+      setChatHistorY(chats);
+    } catch (err) {
+      console.error("Error fetching chat history:", err);
+    }
   };
-  const GetLastUserMessageFromChat = (chats) => {
-    const allMessages = Object.values(chats.messages).flat();
-    const userMessages = allMessages.filter((msg) => msg.role == "user");
-    const lastUserMsg = userMessages[userMessages.length - 1].content || null;
 
-    const lastUpdated = chats.lastUpdated || Date.now;
+  const GetLastUserMessageFromChat = (chats) => {
+    if (!chats || !chats.messages) {
+      return {
+        chatId: chats?.chatId || "",
+        message: "No messages yet",
+        lastMsgDate: "N/A",
+      };
+    }
+
+    const allMessages = Object.values(chats.messages).flat();
+    const userMessages = allMessages.filter((msg) => msg.role === "user");
+
+    const lastUserMsg =
+      userMessages.length > 0
+        ? userMessages[userMessages.length - 1].content
+        : "No user message";
+
+    const lastUpdated = chats.lastUpdated || Date.now();
     const formattedDate = moment(lastUpdated).fromNow();
 
     return {
@@ -65,19 +86,9 @@ export function AppSidebar() {
     };
   };
 
-  // const GetRemainingTokenMsgs = async () =>{
-  //   const result = await axios.post('/api/user-remaining-msg')
-  //   setFreeMsgCount(result.data.remainingToken)
-
-  // }
-
-  // import axios from "axios";
-
   const GetRemainingTokenMsgs = async () => {
     try {
       const result = await axios.post("/api/user-remaining-msg");
-
-      console.log("Remaining:", result.data.remainingToken);
       setFreeMsgCount(result.data.remainingToken);
     } catch (err) {
       console.error(
@@ -91,7 +102,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="p-2">
-          <div className=" flex justify-between items-center">
+          <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <img
                 src="/logo.svg"
@@ -103,7 +114,7 @@ export function AppSidebar() {
               <h2 className="font-bold text-2xl">AI Fusion</h2>
             </div>
             <div>
-              {theme == "light" ? (
+              {theme === "light" ? (
                 <Button variant={"ghost"} onClick={() => setTheme("dark")}>
                   <Sun />
                 </Button>
@@ -114,72 +125,72 @@ export function AppSidebar() {
               )}
             </div>
           </div>
+
           <div>
-            {/* can remove this condition below to bypass authentication */}
             {user ? (
               <Link href="/">
-                <Button className="mt-7 w-full " size={"lg"}>
+                <Button className="mt-7 w-full" size={"lg"}>
                   + New Chat
                 </Button>
               </Link>
             ) : (
               <SignInButton>
-                <Button className="mt-7 w-full " size={"lg"}>
+                <Button className="mt-7 w-full" size={"lg"}>
                   + New Chat
                 </Button>
               </SignInButton>
             )}
-            {/* <Button className="mt-7 w-full " size={"lg"}>
-                  {" "}
-                  + New Chat
-                </Button> */}
           </div>
         </div>
       </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
           <div className="p-3">
-            <h2 className="font-bold  text-lg">Chat</h2>
+            <h2 className="font-bold text-lg">Chat</h2>
             {!user && (
               <p className="text-sm text-gray-400">
                 Sign in to start chatting with multiple AI models
               </p>
             )}
+
             {chatHistorY.map((chat, index) => {
-              <Link
-                key={index}
-                href={"?chatId=" + chat.chatId}
-                className="mt-2 "
-              >
-                <div className=" hover:bg-gray-200 p-3 cursor-pointer">
-                  <h2 className="text-sm text-gray-400">
-                    {GetLastUserMessageFromChat(chat).lastMsgDate}
-                  </h2>
-                  <h2 className="text-lg line-clamp-1">
-                    {GetLastUserMessageFromChat(chat).message}
-                  </h2>
-                  <hr className="my-3" />
-                </div>
-              </Link>;
+              const chatInfo = GetLastUserMessageFromChat(chat);
+              return (
+                <Link
+                  key={index}
+                  href={"?chatId=" + chatInfo.chatId}
+                  className="mt-2"
+                >
+                  <div className="hover:bg-gray-200 p-3 cursor-pointer">
+                    <h2 className="text-sm text-gray-400">
+                      {chatInfo.lastMsgDate}
+                    </h2>
+                    <h2 className="text-lg line-clamp-1">
+                      {chatInfo.message}
+                    </h2>
+                    <hr className="my-3" />
+                  </div>
+                </Link>
+              );
             })}
           </div>
         </SidebarGroup>
       </SidebarContent>
+
       <SidebarFooter>
         <div className="p-3 mb-10">
           {!user ? (
-            // can remove this signinButton
             <SignInButton mode="modal">
               <Button className={"w-full"} size={"lg"}>
-                Sign In/ Sign Up
+                Sign In / Sign Up
               </Button>
             </SignInButton>
           ) : (
             <div>
               {!has({ plan: "unlimited_plan" }) && (
                 <div>
-                  <UsageCreditProgress remainingToken={GetRemainingTokenMsgs} />
-
+                  <UsageCreditProgress remainingToken={freeMsgCount} />
                   <PricingModal>
                     <Button className={"w-full mb-3"}>
                       <Zap /> Upgrade Plan
