@@ -12,7 +12,7 @@ import { SignInButton, useAuth, useUser } from "@clerk/nextjs";
 import { Moon, Sun, User2, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import UsageCreditProgress from "./UsageCreditProgress";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, getDoc, doc } from "firebase/firestore";
 import { useEffect, useState, useContext } from "react";
 import moment from "moment";
 import Link from "next/link";
@@ -56,6 +56,25 @@ export function AppSidebar() {
       setChatHistorY(chats);
     } catch (err) {
       console.error("Error fetching chat history:", err);
+    }
+  };
+
+  // ✅ Function to fetch full chat by chatId
+  const GetSingleChat = async (chatId) => {
+    try {
+      const docRef = doc(db, "chatHistorY", chatId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        console.log("Chat data:", docSnap.data());
+        return docSnap.data();
+      } else {
+        console.log("No such document!");
+        return null;
+      }
+    } catch (err) {
+      console.error("Error fetching single chat:", err);
+      return null;
     }
   };
 
@@ -157,21 +176,23 @@ export function AppSidebar() {
             {chatHistorY.map((chat, index) => {
               const chatInfo = GetLastUserMessageFromChat(chat);
               return (
-                <Link
+                <div
                   key={index}
-                  href={"?chatId=" + chatInfo.chatId}
-                  className="mt-2"
+                  onClick={async () => {
+                    const chatData = await GetSingleChat(chatInfo.chatId);
+                    if (chatData) {
+                      console.log("Loaded chat:", chatData);
+                      // 👉 You could call setMessages(chatData.messages) here if needed
+                    }
+                  }}
+                  className="mt-2 cursor-pointer hover:bg-gray-200 p-3"
                 >
-                  <div className="hover:bg-gray-200 p-3 cursor-pointer">
-                    <h2 className="text-sm text-gray-400">
-                      {chatInfo.lastMsgDate}
-                    </h2>
-                    <h2 className="text-lg line-clamp-1">
-                      {chatInfo.message}
-                    </h2>
-                    <hr className="my-3" />
-                  </div>
-                </Link>
+                  <h2 className="text-sm text-gray-400">
+                    {chatInfo.lastMsgDate}
+                  </h2>
+                  <h2 className="text-lg line-clamp-1">{chatInfo.message}</h2>
+                  <hr className="my-3" />
+                </div>
               );
             })}
           </div>
